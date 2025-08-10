@@ -1,18 +1,8 @@
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import yfinance as yf
-import pandas as pd
 import datetime
 import pytz
 import time
 import requests
-import os
-import json
-
-# ======================================
-# 🔑 Google Sheets Credentials JSON
-GOOGLE_CRED_FILE = "gcreds.json"  # Your JSON key file
-SHEET_NAME = "Ema_Bot"            # Your Google Sheet Name
 
 # ======================================
 # 📜 Stock List
@@ -63,19 +53,6 @@ MARKET_OPEN = datetime.time(9, 15)
 MARKET_CLOSE = datetime.time(15, 30)
 TIMEZONE = pytz.timezone('Asia/Kolkata')
 
-# ✅ Initialize Google Sheet
-import os
-import json
-
-SHEET_NAME = "Ema_Bot"  # Keep your sheet name
-
-# Load Google creds from environment variable
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-client_g = gspread.authorize(creds)
-sheet = client_g.open(SHEET_NAME).sheet1
-
 # 📥 Fetch 15-min Candle
 def fetch_candles(symbol):
     try:
@@ -121,10 +98,8 @@ def send_telegram(message):
 
 # 🔍 Check EMA Signal
 def check_signal(df, symbol, tracker):
-    # Make sure we are working with the last row as a Series
     latest = df.iloc[-1]
 
-    # Safely extract float values
     ema_13 = latest['EMA_13'].item() if hasattr(latest['EMA_13'], 'item') else float(latest['EMA_13'])
     ema_50 = latest['EMA_50'].item() if hasattr(latest['EMA_50'], 'item') else float(latest['EMA_50'])
     ema_200 = latest['EMA_200'].item() if hasattr(latest['EMA_200'], 'item') else float(latest['EMA_200'])
@@ -187,24 +162,19 @@ def is_market_open():
         return False
     return MARKET_OPEN <= now.time() <= MARKET_CLOSE
 
-# 📝 Update Google Sheet
-def update_sheet(data):
-    sheet.clear()
-    headers = ["Stock", "Signal", "Close", "EMA_13", "EMA_50", "EMA_200", "Time"]
-    sheet.append_row(headers)
-    for row in data:
-        sheet.append_row(row)
-
 # 🔁 Main Loop
 print("🚀 EMA Trading Bot Started")
 while True:
+    now = datetime.datetime.now(TIMEZONE).time()
+    if now > MARKET_CLOSE:
+        print("Market closed. Exiting loop.")
+        break
     try:
         if not is_market_open():
             print("💤 Market closed. Waiting...")
             time.sleep(300)
             continue
 
-        output_data = []
         for symbol in STOCKS.keys():
             print(f"\n🔄 Checking {symbol}...")
             df = fetch_candles(symbol)
@@ -220,10 +190,6 @@ while True:
             now_time = datetime.datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M")
 
             print(f"🔔 {symbol} => {signal}")
-            output_data.append([symbol, signal, round(close, 2), round(ema_13, 2), round(ema_50, 2), round(ema_200, 2), now_time])
-
-        if output_data:
-            update_sheet(output_data)
 
         print("⏳ Waiting 1 minute...")
         time.sleep(60)
