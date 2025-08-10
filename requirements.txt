@@ -1,5 +1,0 @@
-yfinance
-pytz
-gspread
-oauth2client
-
